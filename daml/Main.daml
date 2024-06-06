@@ -9,8 +9,14 @@ import Daml.Script
 
 import Test
 
--- TODO
 setup : Script ()
 setup = script do
-  initTestParties >>= initCookieManufactoryServices
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  darlaId <- validateUserId "Darla"
+  elliotId <- validateUserId "Elliot"
+  doughboyId <- validateUserId "Doughboy"
+  createUser (User darlaId (Some testParties.customer1)) [CanActAs testParties.customer1]
+  createUser (User elliotId (Some testParties.customer2)) [CanActAs testParties.customer2, CanReadAs testParties.customer1]
+  createUser (User doughboyId (Some testParties.baker1)) [CanActAs testParties.baker1]
   pure ()

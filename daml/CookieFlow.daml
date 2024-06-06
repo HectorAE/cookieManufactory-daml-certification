@@ -63,7 +63,7 @@ template CookiesRequest
       controller customer
       do pure ()
 
-    -- If the baker chooses not to fulfil the request, they may provide a reason for doing so
+    -- If the baker chooses not to fulfill the request, they may provide a reason for doing so
     choice TurnDown : ()
       with
         reason : Optional Text

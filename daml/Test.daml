@@ -4,7 +4,7 @@
 module Test where
 
 import DA.Foldable
-import DA.List
+import DA.List qualified as List
 
 import Daml.Script
 
@@ -41,8 +41,64 @@ testRequestBakeEat2Cookies : Script ()
 testRequestBakeEat2Cookies = script do
   testParties <- initTestParties
   services <- initCookieManufactoryServices testParties
-  let service1 = head services
+  let service1 = List.head services
   request1 <- submit testParties.customer1 $ exerciseCmd service1 RequestCookies with
                 flavors = [PeanutButter, Snickerdoodle]
   cookies <- submit testParties.baker1 $ exerciseCmd request1 BakeCookies
   mapA_ (\c -> submit testParties.customer1 (exerciseCmd c Eat)) cookies
+
+-- Happy path 2, customer cancels the order
+testRequestCancel : Script ()
+testRequestCancel = script do
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  let service1 = List.head services
+  request1 <- submit testParties.customer1 $ exerciseCmd service1 RequestCookies with
+                flavors = [ChocolateChip]
+  submit testParties.customer1 $ exerciseCmd request1 Cancel
+
+-- Happy path 3, baker turns down the order
+testRequestTurnDown : Script ()
+testRequestTurnDown = script do
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  let service1 = List.head services
+  request1 <- submit testParties.customer1 $ exerciseCmd service1 RequestCookies with
+                flavors = [Snickerdoodle] <> [Snickerdoodle, Snickerdoodle] <> [Snickerdoodle, Snickerdoodle, Snickerdoodle]
+                          <> [Snickerdoodle, Snickerdoodle, Snickerdoodle, Snickerdoodle, Snickerdoodle, Snickerdoodle, Snickerdoodle]
+  -- Simulate baker actually reading the order beforehand, using a ledger query
+  Some request1Payload <- queryContractId testParties.baker1 request1
+  let number = List.length request1Payload.flavors
+  debug number
+  submit testParties.baker1 $ exerciseCmd request1 TurnDown with
+    reason = Some $ "Sorry, " <> (show number) <> " is too many snickerdoodles"
+
+-- Unhappy path 1, trying to order zero cookies
+testNegativeRequest0Cookies : Script ()
+testNegativeRequest0Cookies = script do
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  let service1 = List.head services
+  submitMustFail testParties.customer1 $ exerciseCmd service1 RequestCookies with
+                flavors = []
+
+-- Unhappy path 2, trying to put in the exact same order twice, before the first is fulfilled
+testNegativeRequestDuplicate : Script ()
+testNegativeRequestDuplicate = script do
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  let service1 = List.head services
+  submit testParties.customer1 $ exerciseCmd service1 RequestCookies with
+    flavors = [ChocolateChip]
+  submitMustFail testParties.customer1 $ exerciseCmd service1 RequestCookies with
+    flavors = [ChocolateChip]
+
+-- Unhappy path 3, checking that the customer cannot bake their own cookies
+testNegativeNoSelfBaking : Script ()
+testNegativeNoSelfBaking = script do
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  let service1 = List.head services
+  request1 <- submit testParties.customer1 $ exerciseCmd service1 RequestCookies with
+                flavors = [DoubleChocolate, DoubleChocolate, Gingersnap]
+  submitMustFail testParties.customer1 $ exerciseCmd request1 BakeCookies
