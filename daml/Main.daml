@@ -1,106 +1,16 @@
 -- Copyright 2024 Hector Escobedo
 -- SPDX-License-Identifier: Apache-2.0
 
+-- Mainly for Navigator test initialization
+
 module Main where
 
 import Daml.Script
 
--- Each cookie recipe has a different flavor, defined by this custom enum data type
--- More flavors may be added in future versions
-data Flavor
-    = ChocolateChip
-    | DoubleChocolate
-    | Gingersnap
-    | PeanutButter
-    | Snickerdoodle
-  deriving (Eq, Ord, Show)
-
-class Edible a where
-  eat : a -> Text
-
--- Uses a pattern-matching conditional
-instance Edible Flavor where
-  eat = \case
-    ChocolateChip -> "Delicious chocolate chips!"
-    DoubleChocolate -> "Rich, double chocolatey!"
-    Gingersnap -> "Snappy and gingery!"
-    PeanutButter -> "Yum, peanut butter is great!"
-    Snickerdoodle -> "Ah, a tasty snickerdoodle!"
-
--- A baked good
--- Note that the baker is not required to be an observer, since ownership is directly assigned to customer at creation
-template Cookie
-  with
-    owner : Party
-    flavor : Flavor
-  where
-    signatory owner
-
-    -- Once the cookie is consumed, it's gone
-    choice Eat : ()
-      controller owner
-      do
-      debug $ eat flavor
-
--- An order for some new cookies
-template CookiesRequest
-  with
-    baker : Party
-    customer : Party
-    flavors : [Flavor]
-  where
-    signatory baker, customer
-    -- At least one cookie must be ordered
-    ensure flavors /= []
-    -- To prevent confusion, duplicate orders (that are both active) are not allowed
-    key (baker, customer, flavors) : (Party, Party, [Flavor])
-    maintainer key._1
-
-    -- The customer may change their mind and cancel the order
-    choice Cancel : ()
-      controller customer
-      do pure ()
-
-    -- If the baker chooses not to fulfil the request, they may provide a reason for doing so
-    choice TurnDown : ()
-      with
-        reason : Optional Text
-      controller baker
-        do
-          case reason of
-            Some txt -> debug txt
-            None -> pure ()
-
-    choice BakeCookies : [ContractId Cookie]
-      controller baker
-      do
-        let bake x = create Cookie with
-                        owner = customer
-                        flavor = x
-        -- Iterate over the list of ordered flavors, which may contain multiples of the same type of cookie
-        -- (If we did not want to allow multiples of the same type in the same order, we would use Set)
-        mapA bake flavors
-
--- A customer may use this to request cookies at any time
-template CookieManufactoryService
-  with
-    baker : Party
-    customer : Party
-  where
-    signatory baker
-    observer customer
-
-    -- Multiple cookies may be requested in one transaction
-    nonconsuming choice RequestCookies : ContractId CookiesRequest
-      with
-        flavors : [Flavor]
-      controller customer
-        do create CookiesRequest with
-              baker
-              customer
-              flavors
+import Test
 
 -- TODO
 setup : Script ()
 setup = script do
+  initTestParties >>= initCookieManufactoryServices
   pure ()

@@ -1,0 +1,48 @@
+-- Copyright 2024 Hector Escobedo
+-- SPDX-License-Identifier: Apache-2.0
+
+module Test where
+
+import DA.Foldable
+import DA.List
+
+import Daml.Script
+
+import CookieFlow
+
+data TestParties = TestParties with
+    customer1 : Party
+    customer2 : Party
+    baker1 : Party
+  deriving (Show)
+
+initTestParties : Script TestParties
+initTestParties = script do
+  customer1 <- allocateParty "customer1"
+  customer2 <- allocateParty "customer2"
+  baker1 <- allocateParty "baker1"
+  pure $ TestParties with
+            customer1
+            customer2
+            baker1
+
+initCookieManufactoryServices : TestParties -> Script [ContractId CookieManufactoryService]
+initCookieManufactoryServices testParties@TestParties{..} = script do
+  service1 <- submit baker1 $ createCmd CookieManufactoryService with
+                baker = baker1
+                customer = customer1
+  service2 <- submit baker1 $ createCmd CookieManufactoryService with
+                baker = baker1
+                customer = customer2
+  pure [service1, service2]
+
+-- Happy path 1, full scenario
+testRequestBakeEat2Cookies : Script ()
+testRequestBakeEat2Cookies = script do
+  testParties <- initTestParties
+  services <- initCookieManufactoryServices testParties
+  let service1 = head services
+  request1 <- submit testParties.customer1 $ exerciseCmd service1 RequestCookies with
+                flavors = [PeanutButter, Snickerdoodle]
+  cookies <- submit testParties.baker1 $ exerciseCmd request1 BakeCookies
+  mapA_ (\c -> submit testParties.customer1 (exerciseCmd c Eat)) cookies
